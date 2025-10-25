@@ -1,0 +1,93 @@
+name: Build and Push Docker Image
+
+on:
+  schedule:
+    # Check for new versions daily at 00:00 UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    # Support manual trigger
+
+env:
+  UPSTREAM_REPO: Diniboy1123/usque
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get latest upstream release version
+        id: get-upstream-version
+        run: |
+          LATEST_RELEASE=$(curl -s https://api.github.com/repos/${UPSTREAM_REPO}/releases/latest | jq -r .tag_name)
+          echo "version=${LATEST_RELEASE}" >> $GITHUB_OUTPUT
+          echo "Latest upstream version: ${LATEST_RELEASE}"
+
+      - name: Check if image already exists
+        id: check-image
+        run: |
+          VERSION=${{ steps.get-upstream-version.outputs.version }}
+          # Check if the image for this version already exists
+          if curl -s -f -u ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }} \
+            https://${REGISTRY}/v2/${{ github.repository }}/manifests/${VERSION} > /dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Image ${VERSION} already exists, skipping build"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Image ${VERSION} does not exist, preparing to build"
+          fi
+
+      - name: Set up QEMU
+        if: steps.check-image.outputs.exists == 'false'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        if: steps.check-image.outputs.exists == 'false'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: steps.check-image.outputs.exists == 'false'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        if: steps.check-image.outputs.exists == 'false'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ steps.get-upstream-version.outputs.version }}
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        if: steps.check-image.outputs.exists == 'false'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ steps.get-upstream-version.outputs.version }}
+
+      - name: Output image information
+        if: steps.check-image.outputs.exists == 'false'
+        run: |
+          echo "Image successfully built and pushed"
+          echo "Image tags:"
+          echo "${{ steps.meta.outputs.tags }}"
