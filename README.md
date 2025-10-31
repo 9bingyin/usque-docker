@@ -1,7 +1,6 @@
 # Usque Docker
 
 [![Build and Push Docker Image](https://github.com/9bingyin/usque-docker/actions/workflows/docker-build.yml/badge.svg)](https://github.com/9bingyin/usque-docker/actions/workflows/docker-build.yml)
-[![Docker Pulls](https://img.shields.io/docker/pulls/9bingyin/usque-docker)](https://github.com/9bingyin/usque-docker/pkgs/container/usque-docker)
 
 基于 [Diniboy1123/usque](https://github.com/Diniboy1123/usque) 的 Docker 镜像，提供开箱即用的 Cloudflare WARP MASQUE 协议代理服务。
 
